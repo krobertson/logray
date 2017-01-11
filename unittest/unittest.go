@@ -20,7 +20,7 @@ const (
 	// This format string is used to replace the time stamp with a fixed number
 	// representing the number of log lines contained in the buffer. We fake
 	// this a bit by using epoch and mutating the real time stamp.
-	formatStr = "%color:class%[%hour%:%minute%:%second%.%nanosecond% " +
+	defaultFormatStr = "%color:class%[%hour%:%minute%:%second%.%nanosecond% " +
 		"%class% category='%category%' context='%context%'] %message%" +
 		"%color:default%"
 )
@@ -43,12 +43,24 @@ type LogBuffer struct {
 
 	// Mutex used to protect internal data structures.
 	mutex sync.Mutex
+
+	// fields contains all log line fields to be logged.
+	fields map[string]interface{}
 }
 
 // Tracker implementation of io.Writer to let this object receive logs.
 func (l *LogBuffer) Write(ld *logray.LineData) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+
+	if len(ld.Fields) > 0 {
+		if l.fields == nil {
+			l.fields = make(map[string]interface{}, len(ld.Fields))
+		}
+		for k, v := range ld.Fields {
+			l.fields[k] = v
+		}
+	}
 	l.buffer = append(l.buffer, ld)
 	return nil
 }
@@ -71,7 +83,7 @@ func (l *LogBuffer) Lines() []string {
 
 	buffer := bytes.NewBuffer(nil)
 	// Ignore err, there is nothing we can do with it anyway.
-	output, _ := logray.NewIOWriterOutput(buffer, formatStr, "auto")
+	output, _ := logray.NewIOWriterOutput(buffer, defaultFormatStr, "auto")
 	for _, ld := range l.buffer {
 		// Ignore errors.. there is nothing we can do about it anyway.
 		output.Write(ld)
@@ -85,7 +97,7 @@ func (l *LogBuffer) NewLines() []string {
 
 	buffer := bytes.NewBuffer(nil)
 	// Ignore err, there is nothing we can do with it anyway.
-	output, _ := logray.NewIOWriterOutput(buffer, formatStr, "auto")
+	output, _ := logray.NewIOWriterOutput(buffer, defaultFormatStr, "auto")
 	for i, ld := range l.buffer {
 		if i < l.lastRead {
 			continue
@@ -106,6 +118,23 @@ func (l *LogBuffer) NewLines() []string {
 func (l *LogBuffer) DumpToStdout() {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+
+	formatStr := defaultFormatStr
+	// Add format string part for new fields added to the buffer.
+	if len(l.fields) > 0 {
+		if ind := strings.Index(formatStr, "]"); ind != -1 {
+			prefix := formatStr[:ind]
+			fieldsOutput := make([]string, 0)
+			for k, v := range l.fields {
+				if v != nil {
+					fieldsOutput = append(fieldsOutput, fmt.Sprintf(" %s='%%field:%s%%'", k, k))
+				}
+			}
+			middle := strings.Join(fieldsOutput, " ")
+			suffix := formatStr[ind:]
+			formatStr = fmt.Sprintf("%s%s%s", prefix, middle, suffix)
+		}
+	}
 
 	output, err := logray.NewIOWriterOutput(os.Stdout, formatStr, "auto")
 	if err != nil {
@@ -131,7 +160,7 @@ func (l *LogBuffer) DumpToFile(path string) {
 	}
 
 	var output logray.Output
-	if output, err = logray.NewIOWriterOutput(w, formatStr, "auto"); err != nil {
+	if output, err = logray.NewIOWriterOutput(w, defaultFormatStr, "auto"); err != nil {
 		fmt.Printf("Error from logray.NewIOWriterOutput: %s\n", err)
 		return
 	}
