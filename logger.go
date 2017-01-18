@@ -161,15 +161,16 @@ func (logger *Logger) UpdateOutput(uri string, classes ...LogClass) error {
 		class |= c
 	}
 
+	newoutputs := make([]*loggerOutputWrapper, 0)
 	// Lock our outputs
 	logger.outputMutex.Lock()
 	defer logger.outputMutex.Unlock()
 	for i, o := range logger.outputs {
-		if class == o.Class && u.Scheme == o.OutputWrapper.URL.Scheme {
+		if (o.Class == class || o.Class&class != 0) && u.Scheme == o.OutputWrapper.URL.Scheme {
 			// Found a match
 
-			// generate it with new uri.
-			lo, err := createOutputWrapper(uri, classes)
+			// generate it with new uri for intersection of given classes and output's classes.
+			lo, err := createOutputWrapperForClass(uri, o.Class&class)
 			if err != nil {
 				return err
 			}
@@ -178,8 +179,18 @@ func (logger *Logger) UpdateOutput(uri string, classes ...LogClass) error {
 			}
 
 			logger.outputs[i] = lo
+
+			// Save this output for rest of the classes not being updated.
+			// Add these later outside the loop so that these are not updated.
+			restClasses := (o.Class ^ class) & o.Class
+			if restClasses != NONE && restClasses != isPLUSDEF {
+				o.Class = restClasses
+				newoutputs = append(newoutputs, o)
+			}
 		}
 	}
+
+	logger.outputs = append(logger.outputs, newoutputs...)
 
 	return nil
 }
@@ -202,16 +213,22 @@ func createOutputWrapper(uri string, classes []LogClass) (*loggerOutputWrapper, 
 		return nil, nil
 	}
 
-	// Generate the output wrapper or capture the cached one
-	ow, err := newOutput(uri)
-	if err != nil {
-		return nil, err
-	}
-
 	// Combine the output classes into just one
 	class := NONE
 	for _, c := range classes {
 		class |= c
+	}
+
+	return createOutputWrapperForClass(uri, class)
+}
+
+// createOutputWrapperForClass generates a new loggerOutputWrapper based on the passed
+// parameters. It will return an error if it fails to generate the output.
+func createOutputWrapperForClass(uri string, class LogClass) (*loggerOutputWrapper, error) {
+	// Generate the output wrapper or capture the cached one
+	ow, err := newOutput(uri)
+	if err != nil {
+		return nil, err
 	}
 
 	// generate the wrapper

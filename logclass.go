@@ -201,6 +201,6 @@ const (
 var (
 	// Defines the base log classes.
 	baseLogClasses = []LogClass{
-		TRACE, DEBUG, INFO, WARN, ERROR,
+		TRACE, DEBUG, INFO, WARN, ERROR, FATAL,
 	}
 )
