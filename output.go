@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -262,13 +264,27 @@ func newOutputFuncFile(u *url.URL) (Output, error) {
 	}
 
 	// Open the specified file
-	file, err := os.OpenFile(u.Path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	file, err := os.OpenFile(uriPathToFilename(u.Path), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
 
 	// The output object we will return.
 	return NewIOWriterOutput(file, format, color)
+}
+
+// uriPathToFilename converts the path from a URI to a valid local file name.
+// E.g. file:///c:/foo -> c:\foo
+// E.g. file:///foo -> /foo
+func uriPathToFilename(uriPath string) string {
+	if runtime.GOOS != "windows" {
+		return uriPath
+	}
+
+	// Convert slashes and remove first `/` left over from the URI path since
+	// absolute path on Windows won't start with `\`.
+	filename := strings.TrimPrefix(uriPath, `/`)
+	return filepath.FromSlash(filename)
 }
 
 // Parses a URL that starts with file://
