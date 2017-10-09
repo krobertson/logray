@@ -4,7 +4,6 @@ package logray
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 )
@@ -17,8 +16,9 @@ func packageFilenameLine(ld *LineData, depth int) {
 		return
 	}
 
-	// strip the directory from the filename
-	fileParts := strings.Split(filename, string(os.PathSeparator))
+	// Strip the directory from the filename. Even on Windows this is slash
+	// delimited. See https://github.com/golang/go/issues/3335.
+	fileParts := strings.Split(filename, "/")
 	ld.SourceFile = fileParts[len(fileParts)-1]
 	ld.SourceLine = linenum
 
